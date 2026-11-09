@@ -1,0 +1,12 @@
+# source media (large, re-downloadable)
+*.mp4
+*.webm
+*.m4a
+*.wav
+*.npy
+
+# intermediate frames
+samples/
+seg/
+
+__pycache__/
