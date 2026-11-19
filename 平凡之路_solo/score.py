@@ -3,10 +3,8 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-import sys
-from data import X, DEAD, CHORDS, INTRO, VERSE1, VERSE2, CHORUS, SOLO, OUTRO, TEMPO, CAPO
+from data import X, CHORDS, INTRO, VERSE1, VERSE2, CHORUS, SOLO, OUTRO, TEMPO, CAPO
 
-VERSION = sys.argv[1] if len(sys.argv) > 1 else "solo"     # "solo" = 本谱新编 solo, "laowang" = 老王指弹版
 
 pdfmetrics.registerFont(TTFont("YH", "C:/Windows/Fonts/msyh.ttc", subfontIndex=0))
 pdfmetrics.registerFont(TTFont("YHB", "C:/Windows/Fonts/msyhbd.ttc", subfontIndex=0))
@@ -152,7 +150,7 @@ def draw_tab_line(c, bars, x0, ytop, width, diagrams=True, first=False, final=Fa
                 p.close()
                 c.drawPath(p, stroke=0, fill=1)
                 c.setLineWidth(0.5)
-            if e["acc"]:
+            if e["slap"]:
                 c.setFont("YHB", 8)
                 c.drawCentredString(ex, sy(1) + 4.5, "*")
             if e["arp"]:
@@ -177,12 +175,8 @@ def draw_tab_line(c, bars, x0, ytop, width, diagrams=True, first=False, final=Fa
                 c.setLineWidth(0.5)
             for s, txt in e["n"]:
                 yy = sy(s)
-                if txt in (X, DEAD):
+                if txt == X:
                     c.setLineWidth(0.7)
-                    if txt == DEAD:
-                        c.setFillColorRGB(*(tint or (1, 1, 1)))
-                        c.circle(ex, yy, 2.7, stroke=1, fill=1)
-                        c.setFillColorRGB(0, 0, 0)
                     c.line(ex - 1.9, yy - 1.9, ex + 1.9, yy + 1.9)
                     c.line(ex - 1.9, yy + 1.9, ex + 1.9, yy - 1.9)
                     c.setLineWidth(0.5)
@@ -257,24 +251,9 @@ def draw_tab_line(c, bars, x0, ytop, width, diagrams=True, first=False, final=Fa
 
 
 # ---------------------------------------------------------------- page flow
-if VERSION == "laowang":
-    from laowang import LAOWANG
-    MID, MID_LAYOUT, MID_DIAG = LAOWANG, [4, 4, 5], False
-    OUTRO[0].ts = (4, 4)
-    OUT = "平凡之路_吉他谱_大树+老王间奏.pdf"
-    MID_CREDIT = "间奏：老王指弹改编版（吉他社）"
-    SUBTITLE = "前奏 / 主歌 / 副歌 / 尾声：大树音乐屋教学版编配    间奏：吉他社“老王指弹改编版”中原曲 rap 段的指弹旋律"
-    MID_LEGEND = "间奏（浅蓝底色）取自老王版第 96–108 小节。老王原谱按每分钟 150 拍记谱，这里时值减半与大树版 84 拍对齐，拍号变为 5/8、6/8；带圈的 × 为拍弦。"
-    MID_TITLE = ("间奏 Solo", "老王指弹改编版 · 原曲 rap 段（向前走 就这么走…）的旋律 · 拍号随乐句变化，八分音符为一拍的单位")
-else:
-    MID, MID_LAYOUT, MID_DIAG = SOLO, None, True
-    OUT = "平凡之路_吉他谱_大树+间奏solo.pdf"
-    MID_CREDIT = "间奏 solo：按原曲 rap 段和声新编"
-    SUBTITLE = "前奏 / 主歌 / 副歌 / 尾声：大树音乐屋教学版编配    间奏 solo：替代原曲“向前走 就这么走”rap 段的新编指弹旋律"
-    MID_LEGEND = "第 29–36 小节（浅蓝底色）为新增间奏 solo，原曲此处为 rap，和声 D–F#m | A，G 调指法即 C–Em | G；弹完接尾声。"
-    MID_TITLE = ("间奏 Solo", "新编 · 替代原曲 rap 段（向前走 就这么走…）· 和弦 C–Em | G 循环四次")
+OUT = "平凡之路_吉他谱_大树+间奏solo.pdf"
 c = canvas.Canvas(OUT, pagesize=A4)
-c.setTitle("平凡之路 吉他弹唱谱（大树音乐屋编配 + " + MID_CREDIT.split("：")[1] + "）")
+c.setTitle("平凡之路 吉他弹唱谱（大树音乐屋编配 + 间奏 solo）")
 page = [1]
 y = [PH - MT]
 
@@ -282,7 +261,7 @@ y = [PH - MT]
 def footer():
     c.setFont("YH", 7)
     c.setFillColorRGB(0.45, 0.45, 0.45)
-    c.drawCentredString(PW / 2, 26, f"《平凡之路》吉他弹唱谱 · 正歌编配：大树音乐屋（转写） · {MID_CREDIT} · 第 {page[0]} 页")
+    c.drawCentredString(PW / 2, 26, f"《平凡之路》吉他弹唱谱 · 正歌编配：大树音乐屋（转写） · 间奏 solo：按原曲 rap 段和声新编 · 第 {page[0]} 页")
     c.setFillColorRGB(0, 0, 0)
 
 
@@ -330,7 +309,7 @@ c.drawCentredString(PW / 2, y[0] - 38,
                     f"词：韩寒 / 朴树    曲 / 原唱：朴树    原调 A  选调 G  变调夹 {CAPO} 品    4/4    速度约 {TEMPO} 拍/分")
 c.setFont("YH", 8)
 c.setFillColorRGB(0.35, 0.35, 0.35)
-c.drawCentredString(PW / 2, y[0] - 52, SUBTITLE)
+c.drawCentredString(PW / 2, y[0] - 52, "前奏 / 主歌 / 副歌 / 尾声：大树音乐屋教学版编配    间奏 solo：替代原曲“向前走 就这么走”rap 段的新编指弹旋律")
 c.setFillColorRGB(0, 0, 0)
 y[0] -= 70
 
@@ -342,21 +321,22 @@ for name in ["Em", "Cadd9", "G6add9", "C", "G", "D/#F", "Em9(no5)/D"]:
 y[0] -= 50
 c.setFont("YH", 7.2)
 c.setFillColorRGB(0.35, 0.35, 0.35)
-c.drawString(ML, y[0], "说明：× 表示弹奏当前和弦在该弦上的音；↑ 为下扫（低音弦→高音弦），↓ 为上扫；* 为切音（扫弦后右手掌立即压弦止音）；S 滑音。")
-c.drawString(ML, y[0] - 11, MID_LEGEND)
+c.drawString(ML, y[0], "说明：× 表示弹奏当前和弦在该弦上的音；↑ 为下扫（低音弦→高音弦），↓ 为上扫；S 滑音。")
+c.drawString(ML, y[0] - 11, "* （主歌二）：大拇指敲击 5、6 弦发出打击声，同时中指、无名指弹击 2、3 弦（或 3、4 弦），两个动作同时完成。")
+c.drawString(ML, y[0] - 22, "第 29–36 小节（浅蓝底色）为新增间奏 solo，原曲此处为 rap，和声 D–F#m | A，G 调指法即 C–Em | G；弹完接尾声。")
 c.setFillColorRGB(0, 0, 0)
-y[0] -= 26
+y[0] -= 37
 
 section("前奏")
 tab(INTRO, ts=(4, 4))
 section("A", "主歌一")
 tab(VERSE1)
-section("A'", "主歌二 · 2、3 弦小扫弦加切音")
+section("A'", "主歌二 · * 处拇指敲击 5、6 弦 + 中指无名指弹击 2、3 弦（或 3、4 弦）")
 tab(VERSE2)
 section("B", "副歌 · 扫弦")
 tab(CHORUS)
-section(*MID_TITLE, color=(0.2, 0.4, 0.75))
-tab(MID, layout=MID_LAYOUT, ts=None if VERSION == "laowang" else (4, 4), tint=SOLO_TINT, diagrams=MID_DIAG)
+section("间奏 Solo", "新编 · 替代原曲 rap 段（向前走 就这么走…）· 和弦 C–Em | G 循环四次", color=(0.2, 0.4, 0.75))
+tab(SOLO, ts=(4, 4), tint=SOLO_TINT)
 section("C", "尾声")
 tab(OUTRO, layout=[4, 5], final=True)
 
