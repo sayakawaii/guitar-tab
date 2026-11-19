@@ -3,7 +3,10 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from data import X, CHORDS, INTRO, VERSE1, VERSE2, CHORUS, SOLO, OUTRO, TEMPO, CAPO
+import sys
+from data import X, DEAD, CHORDS, INTRO, VERSE1, VERSE2, CHORUS, SOLO, OUTRO, TEMPO, CAPO
+
+VERSION = sys.argv[1] if len(sys.argv) > 1 else "solo"     # "solo" = 本谱新编 solo, "laowang" = 老王指弹版
 
 pdfmetrics.registerFont(TTFont("YH", "C:/Windows/Fonts/msyh.ttc", subfontIndex=0))
 pdfmetrics.registerFont(TTFont("YHB", "C:/Windows/Fonts/msyhbd.ttc", subfontIndex=0))
@@ -107,8 +110,14 @@ def draw_tab_line(c, bars, x0, ytop, width, diagrams=True, first=False, final=Fa
             c.setFont("YH", 5.5)
             c.drawString(bx + 1.5, y1 + 2, str(measure_no + bi))
         n = len(bar)
-        step = (bw - 12) / max(n, 1)
-        xs = [bx + 8 + step * (i + 0.15) for i in range(n)] if n > 1 else [bx + 10]
+        pad = 0
+        if getattr(bar, "ts", None) and not (first and bi == 0 and time_sig):
+            c.setFont("YHB", 9)
+            c.drawCentredString(bx + 6, sy(2) - 3.5, str(bar.ts[0]))
+            c.drawCentredString(bx + 6, sy(5) - 1.5, str(bar.ts[1]))
+            pad = 8
+        step = (bw - 12 - pad) / max(n, 1)
+        xs = [bx + 8 + pad + step * (i + 0.15) for i in range(n)] if n > 1 else [bx + 10 + pad]
         for e, ex in zip(bar, xs):
             if e["chord"]:
                 if diagrams and e["chord"] in CHORDS:
@@ -118,12 +127,13 @@ def draw_tab_line(c, bars, x0, ytop, width, diagrams=True, first=False, final=Fa
                     c.drawString(ex - 3, y1 + 8, e["chord"])
         for e, ex in zip(bar, xs):
             if e["rest"]:
-                if e["d"] == 2:
+                if e["d"] in (1, 2):
                     yy = sy(3)
-                    c.circle(ex - 1.2, yy + 2.2, 1.0, stroke=0, fill=1)
                     c.setLineWidth(0.8)
-                    c.line(ex - 1.2, yy + 1.4, ex + 1.8, yy + 2.8)
-                    c.line(ex + 1.8, yy + 2.8, ex - 0.4, yy - 4)
+                    for k in range(3 - e["d"]):
+                        c.circle(ex - 1.2 - k * 0.8, yy + 2.2 - k * 2.6, 1.0, stroke=0, fill=1)
+                        c.line(ex - 1.2 - k * 0.8, yy + 1.4 - k * 2.6, ex + 1.8 - k * 0.8, yy + 2.8 - k * 2.6)
+                    c.line(ex + 1.8, yy + 2.8, ex - 0.4 - (2 - e["d"]) * 1.2, yy - 4 - (2 - e["d"]) * 2)
                     c.setLineWidth(0.5)
                 else:
                     c.rect(ex - 3, sy(3) - 1.6, 6, 2.6, stroke=0, fill=1)
@@ -167,8 +177,12 @@ def draw_tab_line(c, bars, x0, ytop, width, diagrams=True, first=False, final=Fa
                 c.setLineWidth(0.5)
             for s, txt in e["n"]:
                 yy = sy(s)
-                if txt == X:
+                if txt in (X, DEAD):
                     c.setLineWidth(0.7)
+                    if txt == DEAD:
+                        c.setFillColorRGB(*(tint or (1, 1, 1)))
+                        c.circle(ex, yy, 2.7, stroke=1, fill=1)
+                        c.setFillColorRGB(0, 0, 0)
                     c.line(ex - 1.9, yy - 1.9, ex + 1.9, yy + 1.9)
                     c.line(ex - 1.9, yy + 1.9, ex + 1.9, yy - 1.9)
                     c.setLineWidth(0.5)
@@ -191,7 +205,7 @@ def draw_tab_line(c, bars, x0, ytop, width, diagrams=True, first=False, final=Fa
         t = 0
         groups = {}
         for e, ex in zip(bar, xs):
-            groups.setdefault(t // 4, []).append((e, ex))
+            groups.setdefault(int(t // 4), []).append((e, ex))
             t += e["d"]
         for g in groups.values():
             g = [(e, ex) for e, ex in g if not e["rest"]]
@@ -243,9 +257,24 @@ def draw_tab_line(c, bars, x0, ytop, width, diagrams=True, first=False, final=Fa
 
 
 # ---------------------------------------------------------------- page flow
-OUT = "平凡之路_吉他谱_大树+间奏solo.pdf"
+if VERSION == "laowang":
+    from laowang import LAOWANG
+    MID, MID_LAYOUT, MID_DIAG = LAOWANG, [4, 4, 5], False
+    OUTRO[0].ts = (4, 4)
+    OUT = "平凡之路_吉他谱_大树+老王间奏.pdf"
+    MID_CREDIT = "间奏：老王指弹改编版（吉他社）"
+    SUBTITLE = "前奏 / 主歌 / 副歌 / 尾声：大树音乐屋教学版编配    间奏：吉他社“老王指弹改编版”中原曲 rap 段的指弹旋律"
+    MID_LEGEND = "间奏（浅蓝底色）取自老王版第 96–108 小节。老王原谱按每分钟 150 拍记谱，这里时值减半与大树版 84 拍对齐，拍号变为 5/8、6/8；带圈的 × 为拍弦。"
+    MID_TITLE = ("间奏 Solo", "老王指弹改编版 · 原曲 rap 段（向前走 就这么走…）的旋律 · 拍号随乐句变化，八分音符为一拍的单位")
+else:
+    MID, MID_LAYOUT, MID_DIAG = SOLO, None, True
+    OUT = "平凡之路_吉他谱_大树+间奏solo.pdf"
+    MID_CREDIT = "间奏 solo：按原曲 rap 段和声新编"
+    SUBTITLE = "前奏 / 主歌 / 副歌 / 尾声：大树音乐屋教学版编配    间奏 solo：替代原曲“向前走 就这么走”rap 段的新编指弹旋律"
+    MID_LEGEND = "第 29–36 小节（浅蓝底色）为新增间奏 solo，原曲此处为 rap，和声 D–F#m | A，G 调指法即 C–Em | G；弹完接尾声。"
+    MID_TITLE = ("间奏 Solo", "新编 · 替代原曲 rap 段（向前走 就这么走…）· 和弦 C–Em | G 循环四次")
 c = canvas.Canvas(OUT, pagesize=A4)
-c.setTitle("平凡之路 吉他弹唱谱（大树音乐屋编配 + 间奏 solo）")
+c.setTitle("平凡之路 吉他弹唱谱（大树音乐屋编配 + " + MID_CREDIT.split("：")[1] + "）")
 page = [1]
 y = [PH - MT]
 
@@ -253,7 +282,7 @@ y = [PH - MT]
 def footer():
     c.setFont("YH", 7)
     c.setFillColorRGB(0.45, 0.45, 0.45)
-    c.drawCentredString(PW / 2, 26, f"《平凡之路》吉他弹唱谱 · 正歌编配：大树音乐屋（转写） · 间奏 solo：按原曲 rap 段和声新编 · 第 {page[0]} 页")
+    c.drawCentredString(PW / 2, 26, f"《平凡之路》吉他弹唱谱 · 正歌编配：大树音乐屋（转写） · {MID_CREDIT} · 第 {page[0]} 页")
     c.setFillColorRGB(0, 0, 0)
 
 
@@ -279,15 +308,15 @@ def section(title, note=None, keep=110, color=RED):
 measure = [1]
 
 
-def tab(bars, layout=None, ts=None, final=False, tint=None):
+def tab(bars, layout=None, ts=None, final=False, tint=None, diagrams=True):
     layout = layout or [4] * ((len(bars) + 3) // 4)
     i = 0
     for k in layout:
         chunk = bars[i:i + k]
-        h = line_height(chunk)
+        h = line_height(chunk, diagrams)
         need(h)
-        draw_tab_line(c, chunk, ML, y[0], CW, first=(i == 0), final=final and i + k >= len(bars),
-                      time_sig=ts if i == 0 else None, measure_no=measure[0], tint=tint)
+        draw_tab_line(c, chunk, ML, y[0], CW, diagrams=diagrams, first=(i == 0), final=final and i + k >= len(bars),
+                      time_sig=(ts or chunk[0].ts) if i == 0 else None, measure_no=measure[0], tint=tint)
         i += k
         measure[0] += len(chunk)
         y[0] -= h
@@ -301,7 +330,7 @@ c.drawCentredString(PW / 2, y[0] - 38,
                     f"词：韩寒 / 朴树    曲 / 原唱：朴树    原调 A  选调 G  变调夹 {CAPO} 品    4/4    速度约 {TEMPO} 拍/分")
 c.setFont("YH", 8)
 c.setFillColorRGB(0.35, 0.35, 0.35)
-c.drawCentredString(PW / 2, y[0] - 52, "前奏 / 主歌 / 副歌 / 尾声：大树音乐屋教学版编配    间奏 solo：替代原曲“向前走 就这么走”rap 段的新编指弹旋律")
+c.drawCentredString(PW / 2, y[0] - 52, SUBTITLE)
 c.setFillColorRGB(0, 0, 0)
 y[0] -= 70
 
@@ -314,7 +343,7 @@ y[0] -= 50
 c.setFont("YH", 7.2)
 c.setFillColorRGB(0.35, 0.35, 0.35)
 c.drawString(ML, y[0], "说明：× 表示弹奏当前和弦在该弦上的音；↑ 为下扫（低音弦→高音弦），↓ 为上扫；* 为切音（扫弦后右手掌立即压弦止音）；S 滑音。")
-c.drawString(ML, y[0] - 11, "第 29–36 小节（浅蓝底色）为新增间奏 solo，原曲此处为 rap，和声 D–F#m | A，G 调指法即 C–Em | G；弹完接尾声。")
+c.drawString(ML, y[0] - 11, MID_LEGEND)
 c.setFillColorRGB(0, 0, 0)
 y[0] -= 26
 
@@ -326,8 +355,8 @@ section("A'", "主歌二 · 2、3 弦小扫弦加切音")
 tab(VERSE2)
 section("B", "副歌 · 扫弦")
 tab(CHORUS)
-section("间奏 Solo", "新编 · 替代原曲 rap 段（向前走 就这么走…）· 和弦 C–Em | G 循环四次", color=(0.2, 0.4, 0.75))
-tab(SOLO, ts=(4, 4), tint=SOLO_TINT)
+section(*MID_TITLE, color=(0.2, 0.4, 0.75))
+tab(MID, layout=MID_LAYOUT, ts=None if VERSION == "laowang" else (4, 4), tint=SOLO_TINT, diagrams=MID_DIAG)
 section("C", "尾声")
 tab(OUTRO, layout=[4, 5], final=True)
 

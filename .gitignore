@@ -10,3 +10,7 @@ samples/
 seg/
 
 __pycache__/
+
+# downloaded source tabs (copyright of their authors, login-only on jitashe)
+*.gp5
+平凡之路_solo/平凡之路指弹改编版.pdf

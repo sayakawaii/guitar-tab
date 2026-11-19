@@ -1,37 +1,23 @@
-"""Render a plucked-string preview of the tab in data.py (Karplus-Strong, sounding key A = capo 2)."""
-import subprocess, sys
+"""Render a preview of the tab: data -> MIDI -> FluidSynth with a sampled steel-string guitar (sounding key A, capo 2).
+
+python synth.py [solo|laowang]
+Needs FluidSynth + GeneralUser-GS.sf2 (paths below, override with FLUIDSYNTH / SOUNDFONT env vars).
+"""
+import os, subprocess, sys
 import numpy as np
+import mido
 import soundfile as sf
-from scipy.signal import lfilter, resample_poly
 import imageio_ffmpeg
-from data import X, CHORDS, INTRO, VERSE1, VERSE2, CHORUS, SOLO, OUTRO, TEMPO, CAPO
+from data import X, DEAD, CHORDS, INTRO, VERSE1, VERSE2, CHORUS, SOLO, OUTRO, TEMPO, CAPO
 
-SR = 88200                     # synthesize at 2x, downsample to 44.1k for better tuning of short delay lines
+HOME = os.path.expanduser("~")
+FLUIDSYNTH = os.environ.get("FLUIDSYNTH", f"{HOME}/tools/fluidsynth/fluidsynth-v2.6.2-win10-x64-cpp11/bin/fluidsynth.exe")
+SOUNDFONT = os.environ.get("SOUNDFONT", f"{HOME}/tools/GeneralUser-GS.sf2")
 OPEN = {6: 40, 5: 45, 4: 50, 3: 55, 2: 59, 1: 64}
+STEEL_GUITAR = 25            # GM program 26 "Acoustic Guitar (steel)"
+SIDE_STICK = 37              # GM drum note used for slaps / palm mutes
 SIXTEENTH = 60 / TEMPO / 4
-rng = np.random.default_rng(7)
-
-
-def pluck(midi, dur, vel=0.8, bright=0.5, decay=0.996):
-    f = 440 * 2 ** ((midi - 69) / 12)
-    n = int(dur * SR)
-    N = SR / f
-    D = int(N - 0.6)
-    frac = N - 0.5 - D                                   # remaining delay for the allpass, in [0.1, 1.1)
-    ca = (1 - frac) / (1 + frac)
-    exc = rng.uniform(-1, 1, D)
-    exc = lfilter([bright, 1 - bright], [1], exc)        # soften attack
-    x = np.zeros(n)
-    x[:D] = exc[:min(D, n)]
-    a = np.zeros(D + 3)
-    a[0], a[1] = 1, ca
-    a[D] -= decay * 0.5 * ca
-    a[D + 1] -= decay * 0.5 * (1 + ca)
-    a[D + 2] -= decay * 0.5
-    y = lfilter([1, ca], a, x)
-    rel = min(int(0.03 * SR), n)
-    y[-rel:] *= np.linspace(1, 0, rel)
-    return vel * y
+rng = np.random.default_rng(11)
 
 
 def resolve(s, txt, chord):
@@ -41,67 +27,118 @@ def resolve(s, txt, chord):
     return int(txt)
 
 
-def render(sections, lead_in=0.4, tail=3.0):
-    bars = [b for sec in sections for b in sec]
-    total = lead_in + sum(e["d"] for b in bars for e in b) * SIXTEENTH + tail
-    out = np.zeros(int(total * SR) + SR)
-    voices = {}                    # string -> (start sample, array) currently ringing
-    notes = []                     # (string, start_t, midi, vel, stop_t_or_None, dur_hint)
-    t = lead_in
-    chord = None
+def collect(bars, lead_in=0.5):
+    """-> guitar notes [dict(s, t, m, v, mute)] and slaps [(t, v)] in seconds."""
+    notes, slaps = [], []
+    t, chord = lead_in, None
     for b in bars:
+        pos = 0
         for e in b:
             if e["chord"]:
                 chord = e["chord"]
             if not e["rest"] and e["n"]:
-                strs = sorted(e["n"], key=lambda p: -p[0])          # low string first
+                on_beat = pos % 4 == 0
+                start = t + rng.normal(0, 0.006)
+                strs = sorted(e["n"], key=lambda p: -p[0])           # low string first
                 if e["strum"] == "down":
                     strs = strs[::-1]
-                gap = 0.045 if e["arp"] else (0.012 if e["strum"] else 0.0)
-                for k, (s, txt) in enumerate(strs):
+                if e["arp"]:
+                    spread = 0.055
+                elif e["strum"]:
+                    spread = rng.uniform(0.010, 0.017)
+                else:
+                    spread = 0.0
+                k = 0
+                dead = [s for s, txt in e["n"] if txt == DEAD]
+                if dead:
+                    slaps.append((start, 70 if on_beat else 58))
+                for s, txt in strs:
+                    if txt == DEAD:
+                        continue
                     fr = resolve(s, txt, chord)
                     if fr is None:
                         continue
-                    vel = 0.55 if e["strum"] else 0.75
-                    if e["strum"] == "down":
-                        vel *= 0.8
-                    notes.append(dict(s=s, t=t + k * gap, m=OPEN[s] + CAPO + fr, v=vel, acc=e["acc"]))
+                    if e["strum"]:
+                        v = (84 if on_beat else 68) if e["strum"] == "up" else 54
+                        v -= 4 * k if e["strum"] == "up" else 0
+                    else:
+                        v = 88 if s >= 5 else (82 if s == 1 else 70)
+                    v = int(np.clip(v + rng.normal(0, 5), 30, 120))
+                    notes.append(dict(s=s, t=start + k * spread, m=OPEN[s] + CAPO + fr, v=v, mute=e["acc"]))
+                    k += 1
                 if e["acc"]:
-                    notes.append(dict(s=0, t=t + 0.05, m=None, v=0.5, acc=True))
+                    slaps.append((start + 0.06, 48))
+            pos += e["d"]
             t += e["d"] * SIXTEENTH
-    # each note rings until the same string is played again (or a muting slap)
-    for i, nt in enumerate(notes):
-        if nt["m"] is None:
-            continue
-        end = nt["t"] + 4.0
+    return notes, slaps, t
+
+
+def note_offs(notes, slaps):
+    """A string rings until it is played again, a palm mute hits, or 4 s pass."""
+    mutes = sorted(ts for ts, _ in slaps)
+    for i, n in enumerate(notes):
+        end = n["t"] + 4.0
         for nx in notes[i + 1:]:
-            if nx["s"] == nt["s"] or (nx["m"] is None and nx["t"] > nt["t"]):
-                end = nx["t"] if nx["m"] is not None else min(end, nx["t"] + 0.02)
+            if nx["s"] == n["s"]:
+                end = min(end, nx["t"] - 0.005)
                 break
-        if nt["acc"]:
-            end = min(end, nt["t"] + 0.06)
-        dur = max(end - nt["t"], 0.05)
-        y = pluck(nt["m"], dur + 0.03, nt["v"], bright=0.45 if nt["s"] >= 4 else 0.6)
-        a = int(nt["t"] * SR)
-        out[a:a + len(y)] += y[:len(out) - a]
-    for nt in notes:
-        if nt["m"] is None:                       # palm slap: short filtered noise burst
-            n = int(0.04 * SR)
-            burst = lfilter([0.3], [1, -0.7], rng.uniform(-1, 1, n)) * np.exp(-np.linspace(0, 6, n)) * 0.35
-            a = int(nt["t"] * SR)
-            out[a:a + n] += burst
-    out = lfilter([1, 0.6, 0.2], [1], out)          # tiny body coloration
-    out = resample_poly(out, 1, 2)
-    out = out / (np.abs(out).max() + 1e-9) * 0.89
-    return out[: int(total * 44100)]
+        if n["mute"]:
+            end = min(end, n["t"] + 0.07)
+        later = [m for m in mutes if m > n["t"] + 0.02]
+        if later and later[0] < end and n["mute"]:
+            end = later[0]
+        n["end"] = max(end, n["t"] + 0.04)
 
 
-def save(name, audio):
-    sf.write(name + ".wav", audio, 44100)
+def write_midi(notes, slaps, path):
+    tpq = 480
+    sec_per_tick = 60 / TEMPO / tpq
+    ev = []
+    for n in notes:
+        ev.append((n["t"], 1, mido.Message("note_on", channel=0, note=n["m"], velocity=n["v"])))
+        ev.append((n["end"], 0, mido.Message("note_off", channel=0, note=n["m"], velocity=0)))
+    for ts, v in slaps:
+        ev.append((ts, 1, mido.Message("note_on", channel=9, note=SIDE_STICK, velocity=v)))
+        ev.append((ts + 0.08, 0, mido.Message("note_off", channel=9, note=SIDE_STICK, velocity=0)))
+    ev.sort(key=lambda x: (x[0], x[1]))
+    mid = mido.MidiFile(ticks_per_beat=tpq)
+    tr = mido.MidiTrack()
+    mid.tracks.append(tr)
+    tr.append(mido.MetaMessage("set_tempo", tempo=mido.bpm2tempo(TEMPO)))
+    tr.append(mido.Message("program_change", channel=0, program=STEEL_GUITAR))
+    tr.append(mido.Message("control_change", channel=0, control=91, value=40))   # reverb send
+    tr.append(mido.Message("control_change", channel=9, control=7, value=70))
+    last = 0
+    for ts, _, msg in ev:
+        tick = max(int(round(ts / sec_per_tick)), last)
+        tr.append(msg.copy(time=tick - last))
+        last = tick
+    mid.save(path)
+
+
+def render(name, bars):
+    notes, slaps, end = collect(bars)
+    note_offs(notes, slaps)
+    write_midi(notes, slaps, name + ".mid")
+    subprocess.run([FLUIDSYNTH, "-ni", "-q", "-g", "0.7", "-r", "44100", "-F", name + ".wav", SOUNDFONT, name + ".mid"],
+                   check=True, stdout=subprocess.DEVNULL)
+    audio, sr = sf.read(name + ".wav")
+    audio = audio[: int((end + 3.5) * sr)]
+    fade = int(1.5 * sr)
+    audio[-fade:] *= np.linspace(1, 0, fade)[:, None]
+    audio = audio / (np.abs(audio).max() + 1e-9) * 0.9
+    sf.write(name + ".wav", audio, sr)
     ff = imageio_ffmpeg.get_ffmpeg_exe()
     subprocess.run([ff, "-y", "-loglevel", "error", "-i", name + ".wav", "-b:a", "192k", name + ".mp3"], check=True)
-    print(name, f"{len(audio) / 44100:.1f}s")
+    os.remove(name + ".mid")
+    print(name, f"{len(audio) / sr:.1f}s")
 
 
-save("平凡之路_试听_全曲", render([INTRO, VERSE1, VERSE2, CHORUS, SOLO, OUTRO]))
-save("平凡之路_试听_副歌尾+间奏solo", render([CHORUS[-2:], SOLO, OUTRO[:2]]))
+VERSION = sys.argv[1] if len(sys.argv) > 1 else "solo"
+if VERSION == "laowang":
+    from laowang import LAOWANG
+    render("平凡之路_试听_全曲_老王间奏", [*INTRO, *VERSE1, *VERSE2, *CHORUS, *LAOWANG, *OUTRO])
+    render("平凡之路_试听_副歌尾+老王间奏", [*CHORUS[-2:], *LAOWANG, *OUTRO[:2]])
+else:
+    render("平凡之路_试听_全曲", [*INTRO, *VERSE1, *VERSE2, *CHORUS, *SOLO, *OUTRO])
+    render("平凡之路_试听_副歌尾+间奏solo", [*CHORUS[-2:], *SOLO, *OUTRO[:2]])

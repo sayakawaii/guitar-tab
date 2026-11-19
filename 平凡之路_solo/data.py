@@ -1,5 +1,6 @@
 """《平凡之路》 大树音乐屋编配 (m1-28, 尾声) + 间奏 solo — shared by score.py and synth.py."""
 X = "×"
+DEAD = "dead"      # 拍弦 / 闷音 (percussive dead note)
 
 # frets from string 6 to string 1; -1 = muted, 0 = open; base = first fret shown
 CHORDS = {
@@ -21,10 +22,11 @@ def E(d, notes=(), chord=None, tech=None, tie=False, strum=None, arp=False, rest
 
 class Bar(list):
     """A measure: list of events + lyrics [(event index (float ok), text)] + end-barline style."""
-    def __init__(self, events, ly=(), end=None):
+    def __init__(self, events, ly=(), end=None, ts=None):
         super().__init__(events)
         self.ly = list(ly)
         self.end = end            # None | "double"
+        self.ts = ts              # time signature shown at the start of this bar
 
 
 def xs(a, b):
