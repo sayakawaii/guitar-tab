@@ -153,6 +153,9 @@ def draw_tab_line(c, bars, x0, ytop, width, diagrams=True, first=False, final=Fa
             if e["slap"]:
                 c.setFont("YHB", 8)
                 c.drawCentredString(ex, sy(1) + 4.5, "*")
+            if e["kick"]:
+                c.setFont("YHB", 8)
+                c.drawCentredString(ex, y6 - 31, "*")
             if e["arp"]:
                 strs = [s for s, _ in e["n"]] or [2, 5]
                 ya, yb = sy(min(strs)) + 2, sy(max(strs)) - 2
@@ -322,7 +325,7 @@ y[0] -= 50
 c.setFont("YH", 7.2)
 c.setFillColorRGB(0.35, 0.35, 0.35)
 c.drawString(ML, y[0], "说明：× 表示弹奏当前和弦在该弦上的音；↑ 为下扫（低音弦→高音弦），↓ 为上扫；S 滑音。")
-c.drawString(ML, y[0] - 11, "* （主歌二）：大拇指敲击 5、6 弦发出打击声，同时中指、无名指弹击 2、3 弦（或 3、4 弦），两个动作同时完成。")
+c.drawString(ML, y[0] - 11, "主歌二：低音下方 * = 拇指拨低音 + 手掌大鱼际击打（类似底鼓）；高音上方 * = 拇指敲 5、6 弦 + 中指无名指弹击 2、3 弦（或 3、4 弦）。")
 c.drawString(ML, y[0] - 22, "第 29–36 小节（浅蓝底色）为新增间奏 solo，原曲此处为 rap，和声 D–F#m | A，G 调指法即 C–Em | G；弹完接尾声。")
 c.setFillColorRGB(0, 0, 0)
 y[0] -= 37
@@ -331,7 +334,7 @@ section("前奏")
 tab(INTRO, ts=(4, 4))
 section("A", "主歌一")
 tab(VERSE1)
-section("A'", "主歌二 · * 处拇指敲击 5、6 弦 + 中指无名指弹击 2、3 弦（或 3、4 弦）")
+section("A'", "主歌二 · 下方 * 拇指拨弦 + 大鱼际击打；上方 * 拇指敲 5、6 弦 + 中指无名指弹击")
 tab(VERSE2)
 section("B", "副歌 · 扫弦")
 tab(CHORUS)

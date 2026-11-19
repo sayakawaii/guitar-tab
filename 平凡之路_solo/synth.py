@@ -15,7 +15,8 @@ FLUIDSYNTH = os.environ.get("FLUIDSYNTH", f"{HOME}/tools/fluidsynth/fluidsynth-v
 SOUNDFONT = os.environ.get("SOUNDFONT", f"{HOME}/tools/GeneralUser-GS.sf2")
 OPEN = {6: 40, 5: 45, 4: 50, 3: 55, 2: 59, 1: 64}
 STEEL_GUITAR = 25            # GM program 26 "Acoustic Guitar (steel)"
-KICK, SIDE_STICK = 36, 37     # GM drum notes layered for the thumb slap on strings 5-6
+KICK, SIDE_STICK = 36, 37     # GM drums: palm-heel hit = kick; thumb slap on strings 5-6 = side stick + soft kick
+FINGER_SNAP_VEL = 68          # half the loudness of velocity 96 (SF2 gain ~ velocity^2)
 SIXTEENTH = 60 / TEMPO / 4
 rng = np.random.default_rng(11)
 
@@ -28,8 +29,8 @@ def resolve(s, txt, chord):
 
 
 def collect(bars, lead_in=0.5):
-    """-> guitar notes [dict(s, t, m, v, end?)] and thumb slaps [(t, v)] in seconds."""
-    notes, slaps = [], []
+    """-> guitar notes [dict(s, t, m, v, end?)], thumb slaps [(t, v)] and drum hits [(t, note, v)] in seconds."""
+    notes, slaps, drums = [], [], []
     t, chord = lead_in, None
     for b in bars:
         pos = 0
@@ -51,8 +52,11 @@ def collect(bars, lead_in=0.5):
                 else:
                     spread = 0.0
                 k = 0
+                if e["kick"]:
+                    drums.append((start, KICK, 92))
                 if e["slap"]:
                     slaps.append((start - 0.003, 78))
+                    drums += [(start - 0.003, SIDE_STICK, 60), (start - 0.003, KICK, 34)]
                     for s in (6, 5):                     # short muted click of the slapped bass strings
                         fr = resolve(s, X, chord)
                         if fr is not None:
@@ -62,7 +66,7 @@ def collect(bars, lead_in=0.5):
                     if fr is None:
                         continue
                     if e["slap"]:
-                        v = 96
+                        v = FINGER_SNAP_VEL
                     elif e["strum"]:
                         v = (84 if on_beat else 68) if e["strum"] == "up" else 54
                         v -= 4 * k if e["strum"] == "up" else 0
@@ -73,7 +77,7 @@ def collect(bars, lead_in=0.5):
                     k += 1
             pos += e["d"]
             t += e["d"] * SIXTEENTH
-    return notes, slaps, t
+    return notes, slaps, drums, t
 
 
 def note_offs(notes, slaps):
@@ -94,17 +98,16 @@ def note_offs(notes, slaps):
         n["end"] = max(end, n["t"] + 0.04)
 
 
-def write_midi(notes, slaps, path):
+def write_midi(notes, drums, path):
     tpq = 480
     sec_per_tick = 60 / TEMPO / tpq
     ev = []
     for n in notes:
         ev.append((n["t"], 1, mido.Message("note_on", channel=0, note=n["m"], velocity=n["v"])))
         ev.append((n["end"], 0, mido.Message("note_off", channel=0, note=n["m"], velocity=0)))
-    for ts, v in slaps:
-        for drum, dv in ((KICK, v), (SIDE_STICK, v // 3)):
-            ev.append((ts, 1, mido.Message("note_on", channel=9, note=drum, velocity=dv)))
-            ev.append((ts + 0.1, 0, mido.Message("note_off", channel=9, note=drum, velocity=0)))
+    for ts, drum, v in drums:
+        ev.append((ts, 1, mido.Message("note_on", channel=9, note=drum, velocity=v)))
+        ev.append((ts + 0.1, 0, mido.Message("note_off", channel=9, note=drum, velocity=0)))
     ev.sort(key=lambda x: (x[0], x[1]))
     mid = mido.MidiFile(ticks_per_beat=tpq)
     tr = mido.MidiTrack()
@@ -122,9 +125,9 @@ def write_midi(notes, slaps, path):
 
 
 def render(name, bars):
-    notes, slaps, end = collect(bars)
+    notes, slaps, drums, end = collect(bars)
     note_offs(notes, slaps)
-    write_midi(notes, slaps, name + ".mid")
+    write_midi(notes, drums, name + ".mid")
     subprocess.run([FLUIDSYNTH, "-ni", "-q", "-g", "0.7", "-r", "44100", "-F", name + ".wav", SOUNDFONT, name + ".mid"],
                    check=True, stdout=subprocess.DEVNULL)
     audio, sr = sf.read(name + ".wav")

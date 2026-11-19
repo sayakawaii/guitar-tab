@@ -14,9 +14,9 @@ CHORDS = {
 
 
 def E(d, notes=(), chord=None, tech=None, tie=False, strum=None, arp=False, rest=False, harm=False, rng=(1, 6),
-      slap=False):
+      slap=False, kick=False):
     return dict(d=d, n=list(notes), chord=chord, tech=tech, tie=tie, strum=strum, arp=arp, rest=rest, harm=harm,
-                rng=rng, slap=slap)
+                rng=rng, slap=slap, kick=kick)
 
 
 class Bar(list):
@@ -43,13 +43,13 @@ def pB():
             E(2, [(6, "2")]), E(2, [(3, "0")]), E(2, [(3, "2")]), E(2, [(4, "0")])]
 
 
-def pA2():  # 主歌二：* = 拇指敲击 5、6 弦，同时中指、无名指弹击 2、3 弦（G 和弦第 7 下为 3、4 弦）
-    return [E(2, [(6, X)], "Em"), E(2, [(4, X)]), E(2, xs(2, 3), strum="up", rng=(2, 3), slap=True), E(2, [(3, X)]),
-            E(2, [(5, X)], "Cadd9"), E(2, [(4, X)]), E(2, xs(2, 3), strum="up", rng=(2, 3), slap=True), E(2, [(3, X)])]
+def pA2():  # 主歌二：kick = 拇指拨低音 + 大鱼际击打琴身；slap = 拇指敲击 5、6 弦 + 中指无名指弹击 2、3 弦（G 和弦第 7 下为 3、4 弦）
+    return [E(2, [(6, X)], "Em", kick=True), E(2, [(4, X)]), E(2, xs(2, 3), strum="up", rng=(2, 3), slap=True), E(2, [(3, X)]),
+            E(2, [(5, X)], "Cadd9", kick=True), E(2, [(4, X)]), E(2, xs(2, 3), strum="up", rng=(2, 3), slap=True), E(2, [(3, X)])]
 
 
 def pB2(last=False):
-    ev = [E(2, [(6, X)], "G6add9"), E(2, [(4, X)]), E(2, xs(2, 3), strum="up", rng=(2, 3), slap=True), E(2, [(3, X)]),
+    ev = [E(2, [(6, X)], "G6add9", kick=True), E(2, [(4, X)]), E(2, xs(2, 3), strum="up", rng=(2, 3), slap=True), E(2, [(3, X)]),
           E(2, [(6, "2")]), E(2, [(3, "0")]), E(2, [(3, "2"), (4, "0")], strum="up", rng=(3, 4), slap=True)]
     return ev + ([E(2, rest=True)] if last else [E(2, [(4, "0")])])
 
@@ -87,14 +87,14 @@ VERSE1 = [
 ]
 
 VERSE2 = [
-    Bar(pA2(), [(0, "*"), (1, "沸"), (2, "腾着的"), (4, "*"), (5, "不"), (6, "安着的")]),
-    Bar(pB2(), [(0, "*")]),
-    Bar(pA2(), [(0, "*"), (1, "你"), (2, "要去哪"), (4, "*"), (5, "Vi"), (6, "a Via")]),
-    Bar(pB2(), [(0, "*")]),
-    Bar(pA2(), [(0, "*"), (1, "谜"), (2, "一样的"), (4, "*"), (6, "沉"), (7, "默着的")]),
-    Bar(pB2(), [(0, "*")]),
-    Bar(pA2(), [(0, "*"), (1, "故"), (2, "事"), (3, "你"), (4, "真的在"), (6.5, "听")]),
-    Bar(pB2(last=True), [(0, "*"), (1, "吗"), (5, "我"), (6, "曾"), (7, "经")], end="double"),
+    Bar(pA2(), [(1, "沸"), (2, "腾着的"), (5, "不"), (6, "安着的")]),
+    Bar(pB2(), []),
+    Bar(pA2(), [(1, "你"), (2, "要去哪"), (5, "Vi"), (6, "a Via")]),
+    Bar(pB2(), []),
+    Bar(pA2(), [(1, "谜"), (2, "一样的"), (6, "沉"), (7, "默着的")]),
+    Bar(pB2(), []),
+    Bar(pA2(), [(1, "故"), (2, "事"), (3, "你"), (4, "真的在"), (6.5, "听")]),
+    Bar(pB2(last=True), [(1, "吗"), (5, "我"), (6, "曾"), (7, "经")], end="double"),
 ]
 
 CHORUS = [
